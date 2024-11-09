@@ -221,7 +221,7 @@ try:
     styled_df['비례배정 필요 투자금'] = styled_df['비례배정 필요 투자금'].round(0)
     
     if subscription_method == "균등배정":
-        styled_df['균등 수익금'] = styled_df['균등 수익금'].round(0)
+        styled_df['균등 수��금'] = styled_df['균등 수익금'].round(0)
     else:
         styled_df['비례 수익금'] = styled_df['비례 수익금'].round(0)
     
@@ -246,7 +246,7 @@ try:
     # 스타일 적용
     st.dataframe(
         styled_df.style
-        .applymap(color_profits, subset=style_columns)
+        .map(color_profits, subset=style_columns)
         .format(format_numbers, subset=[
             '공모가', '시초가', '비례배정 필요 투자금',
             '수익률', '균등배정 예상수량', '비례배분 경쟁률'
