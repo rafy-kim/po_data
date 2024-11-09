@@ -17,3 +17,4 @@ streamlit
 supabase
 plotly
 python-dotenv
+streamlit-js-eval==0.1.5

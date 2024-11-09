@@ -4,6 +4,7 @@ import plotly.express as px
 from supabase import create_client
 import os
 from dotenv import load_dotenv
+from streamlit_js_eval import streamlit_js_eval
 
 # 환경변수 로드
 load_dotenv()
@@ -15,7 +16,28 @@ supabase = create_client(
 )
 
 # 페이지 설정
-st.set_page_config(page_title="IPO 데이터 대시보드", layout="wide")
+st.set_page_config(
+    page_title="IPO 데이터 대시보드",
+    layout="wide",
+    initial_sidebar_state="expanded"  # 모바일에서 사이드바 기본 표시
+)
+
+# CSS로 반응형 스타일 적용
+st.markdown("""
+    <style>
+    .stDataFrame {
+        width: 100%;
+        max-width: 100%;
+    }
+    .stDataFrame > div {
+        overflow-x: auto;
+    }
+    [data-testid="stMetricValue"] {
+        white-space: nowrap;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("2024년 IPO 데이터 분석")
 
 # 사이드바에 기관 경쟁률 필터 추가
@@ -26,7 +48,7 @@ competition_rate = st.sidebar.select_slider(
     value=300
 )
 
-# 사이드바에 청약방법 필터 추가
+# 사이드바에 청약방법 필터 
 st.sidebar.header("청약방법 선택")
 subscription_method = st.sidebar.radio(
     "청약방법",
@@ -94,62 +116,104 @@ if subscription_method == "비례배분":
     )
     # 투자금액을 천 단위 구분하여 표시
     st.sidebar.write(f"현재 투자금액: {investment_amount:,}원")
-    
-    # 비례 수익금 계산
-    df['proportional_profit'] = (investment_amount / df['proportional_required_investment']) * df['profit_amount'] + df['equality_profit']
 
 # 선택된 청약방법에 따라 정렬 및 차트 데이터 설정
 if subscription_method == "균등배정":
     profit_column = 'equality_profit'
     profit_label = '균등 수익금 (원)'
-else:
-    profit_column = 'proportional_profit'
-    profit_label = '비례 수익금 (원)'
-
-# 상장일 기준으로 먼저 정렬한 후, 청약방법에 따라 2차 정렬
-df = df.sort_values('listing_date', ascending=False)
-if subscription_method == "균등배정":
     df = df.sort_values(['listing_date', 'equality_distribution_number_per_person_y'], 
                        ascending=[False, False])
 else:
+    # 비례 수익금 계산을 여기서 수행
+    df['proportional_profit'] = (investment_amount / df['proportional_required_investment']) * df['profit_amount'] + df['equality_profit']
+    profit_column = 'proportional_profit'
+    profit_label = '비례 수익금 (원)'
     df = df.sort_values(['listing_date', 'proportional_distribution_ratio_y'], 
                        ascending=[False, True])
 
-# 대시보드 레이아웃
-col1, col2 = st.columns(2)
+# 화면 크기 확인
+page_width = streamlit_js_eval(js_expressions='window.innerWidth', key='WIDTH', want_output=True)
 
-with col1:
-    st.subheader(f"월별 {profit_label.split(' ')[0]} 수익금")
-    monthly_profits = df.groupby(df['listing_date'].dt.month)[profit_column].sum()
-    fig1 = px.bar(monthly_profits, 
-                  labels={'value': profit_label, 'index': '월'},
-                  title=f'월별 {profit_label.split(" ")[0]} 수익금')
+# 화면 크기에 따라 레이아웃 결정 (예: 768px를 기준으로)
+if page_width and page_width > 768:
+    # 큰 화면에서는 차트를 나란히 표시
+    col1, col2 = st.columns(2)
     
-    # 수익금에 따른 색상 설정 (색상 반전)
-    colors = ['#99ccff' if x < 0 else '#ff9999' for x in monthly_profits.values]
-    fig1.update_traces(marker_color=colors)
-    fig1.update_layout(yaxis=dict(tickformat=","))
-    st.plotly_chart(fig1)
+    with col1:
+        st.subheader(f"월별 {profit_label.split(' ')[0]} 수익금")
+        monthly_profits = df.groupby(df['listing_date'].dt.month)[profit_column].sum()
+        fig1 = px.bar(monthly_profits, 
+                      labels={'value': profit_label, 'index': '월'},
+                      title=f'월별 {profit_label.split(" ")[0]} 수익금')
+        
+        colors = ['#99ccff' if x < 0 else '#ff9999' for x in monthly_profits.values]
+        fig1.update_traces(marker_color=colors)
+        fig1.update_layout(
+            yaxis=dict(tickformat=","),
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=False
+        )
+        st.plotly_chart(fig1, use_container_width=True)
 
-with col2:
-    st.subheader("월별 IPO 건수")
-    monthly_counts = df.groupby(df['listing_date'].dt.month).size()
-    fig2 = px.bar(monthly_counts,
-                  labels={'value': 'IPO 건수', 'index': '월'},
-                  title='월별 IPO 건수')
-    st.plotly_chart(fig2)
+    with col2:
+        st.subheader("월별 IPO 건수")
+        monthly_counts = df.groupby(df['listing_date'].dt.month).size()
+        fig2 = px.bar(monthly_counts,
+                      labels={'value': 'IPO 건수', 'index': '월'},
+                      title='월별 IPO 건수')
+        fig2.update_layout(
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=False
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+else:
+    # 작은 화면에서는 탭으로 표시
+    tab1, tab2 = st.tabs(["수익금 분석", "IPO 건수"])
 
-# 전체 통계 표시
-st.subheader("전체 통계")
-col3, col4, col5 = st.columns(3)
+    with tab1:
+        st.subheader(f"월별 {profit_label.split(' ')[0]} 수익금")
+        monthly_profits = df.groupby(df['listing_date'].dt.month)[profit_column].sum()
+        fig1 = px.bar(monthly_profits, 
+                      labels={'value': profit_label, 'index': '월'},
+                      title=f'월별 {profit_label.split(" ")[0]} 수익금')
+        
+        colors = ['#99ccff' if x < 0 else '#ff9999' for x in monthly_profits.values]
+        fig1.update_traces(marker_color=colors)
+        fig1.update_layout(
+            yaxis=dict(tickformat=","),
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=False
+        )
+        st.plotly_chart(fig1, use_container_width=True)
 
-with col3:
-    st.metric("평균 수익률", f"{df['return_rate'].mean():.2f}%")
-with col4:
-    st.metric("총 상장 건수", f"{len(df)}개")
-with col5:
-    total_profit = df[profit_column].sum()
-    st.metric(f"총 {profit_label.split(' ')[0]} 수익금", f"{total_profit:,.0f}원")
+    with tab2:
+        st.subheader("월별 IPO 건수")
+        monthly_counts = df.groupby(df['listing_date'].dt.month).size()
+        fig2 = px.bar(monthly_counts,
+                      labels={'value': 'IPO 건수', 'index': '월'},
+                      title='월별 IPO 건수')
+        fig2.update_layout(
+            height=400,
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=False
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+# 전체 통계를 컨테이너로 감싸서 반응형으로 만들기
+with st.container():
+    st.subheader("전체 통계")
+    cols = st.columns([1, 1, 1])  # 동일한 너비로 분할
+    
+    with cols[0]:
+        st.metric("평균 수익률", f"{df['return_rate'].mean():.2f}%")
+    with cols[1]:
+        st.metric("총 상장 건수", f"{len(df)}개")
+    with cols[2]:
+        total_profit = df[profit_column].sum()
+        st.metric(f"총 {profit_label.split(' ')[0]} 수익금", f"{total_profit:,.0f}원")
 
 # 개별 종목 데이터 테이블
 st.subheader("개별 종목 데이터")
@@ -178,19 +242,16 @@ base_columns = [
 if subscription_method == "균등배정":
     display_columns = base_columns + [
         'equality_profit',
-        'equality_distribution_number_per_person_y',
-        'proportional_distribution_ratio_y',
-        'proportional_required_investment'
+        'equality_distribution_number_per_person_y'  # 균등배정 관련 컬럼만 표시
     ]
 else:
     display_columns = base_columns + [
         'proportional_profit',
-        'equality_distribution_number_per_person_y',
-        'proportional_distribution_ratio_y',
+        'proportional_distribution_ratio_y',  # 비례배분 관련 컬럼만 표시
         'proportional_required_investment'
     ]
 
-# 데이터프레임 표시
+# 데이터프레임 표시 부분 수정
 try:
     # 기본 컬럼명 변환 딕셔너리
     rename_dict = {
@@ -198,17 +259,21 @@ try:
         'name': '종목명',
         'offer_price': '공모가',
         'initial_price': '시초가',
-        'return_rate': '수익률',
-        'equality_distribution_number_per_person_y': '균등배정 예상수량',
-        'proportional_distribution_ratio_y': '비례배분 경쟁률',
-        'proportional_required_investment': '비례배정 필요 투자금'
+        'return_rate': '수익률'
     }
     
     # 청약방법에 따라 추가 컬럼명 설정
     if subscription_method == "균등배정":
-        rename_dict['equality_profit'] = '균등 수익금'
+        rename_dict.update({
+            'equality_profit': '균등 수익금',
+            'equality_distribution_number_per_person_y': '균등배정 예상수량'
+        })
     else:
-        rename_dict['proportional_profit'] = '비례 수익금'
+        rename_dict.update({
+            'proportional_profit': '비례 수익금',
+            'proportional_distribution_ratio_y': '비례배분 경쟁률',
+            'proportional_required_investment': '비례배정 필요 투자금'
+        })
     
     styled_df = df[display_columns].rename(columns=rename_dict)
     
@@ -216,13 +281,13 @@ try:
     styled_df = styled_df.copy()
     styled_df['상장일'] = styled_df['상장일'].dt.strftime('%Y-%m-%d')
     styled_df['수익률'] = styled_df['수익률'].round(2)
-    styled_df['균등배정 예상수량'] = styled_df['균등배정 예상수량'].round(2)
-    styled_df['비례배분 경쟁률'] = styled_df['비례배분 경쟁률'].round(2)
-    styled_df['비례배정 필요 투자금'] = styled_df['비례배정 필요 투자금'].round(0)
     
     if subscription_method == "균등배정":
-        styled_df['균등 수��금'] = styled_df['균등 수익금'].round(0)
+        styled_df['균등배정 예상수량'] = styled_df['균등배정 예상수량'].round(2)
+        styled_df['균등 수익금'] = styled_df['균등 수익금'].round(0)
     else:
+        styled_df['비례배분 경쟁률'] = styled_df['비례배분 경쟁률'].round(2)
+        styled_df['비례배정 필요 투자금'] = styled_df['비례배정 필요 투자금'].round(0)
         styled_df['비례 수익금'] = styled_df['비례 수익금'].round(0)
     
     # 숫자 형식 지정 함수
@@ -230,28 +295,28 @@ try:
         if isinstance(val, (int, float)):
             if pd.isna(val):
                 return ''
-            # 공모가, 시초가, 비례 수익금, 비례배정 필요 투자금에 천 단위 구분 기호 추가
             if isinstance(val, int) or val.is_integer():
                 return f'{int(val):,}'
-            return f'{val:.2f}'  # 소수점 2자리까지 표시
+            return f'{val:.2f}'
         return val
 
     # 수익률과 수익금 컬럼에만 색상 스타일 적용
     style_columns = ['수익률']
     if subscription_method == "균등배정":
         style_columns.append('균등 수익금')
+        format_columns = ['공모가', '시초가', '수익률', '균등배정 예상수량', '균등 수익금']
     else:
         style_columns.append('비례 수익금')
+        format_columns = ['공모가', '시초가', '수익률', '비례배분 경쟁률', '비례배정 필요 투자금', '비례 수익금']
     
     # 스타일 적용
     st.dataframe(
         styled_df.style
         .map(color_profits, subset=style_columns)
-        .format(format_numbers, subset=[
-            '공모가', '시초가', '비례배정 필요 투자금',
-            '수익률', '균등배정 예상수량', '비례배분 경쟁률'
-        ] + (['균등 수익금'] if subscription_method == "균등배정" else ['비례 수익금'])),
-        hide_index=True
+        .format(format_numbers, subset=format_columns),
+        hide_index=True,
+        use_container_width=True,
+        height=500
     )
 except KeyError as e:
     st.error(f"컬럼 접근 오류: {str(e)}")
