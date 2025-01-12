@@ -110,7 +110,7 @@ if subscription_method == "비례배분":
     investment_amount = st.sidebar.number_input(
         "투자금액",
         min_value=0,
-        value=10_000_000,  # 1000만원으로 기본값 설정
+        value=100_000_000,  # 1억원으로 기본값 설정
         step=1_000_000,     # 100만원 단위로 조정 가능
         format="%d"
     )
