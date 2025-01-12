@@ -45,7 +45,7 @@ st.sidebar.header("청약시 기준")
 competition_rate = st.sidebar.select_slider(
     "기관 경쟁률",
     options=[0, 100, 300, 500, 1000],
-    value=300
+    value=500
 )
 
 # 사이드바에 청약방법 필터 
